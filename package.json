@@ -1,0 +1,19 @@
+{
+  "name": "https-agora-thecanteenapp-com-utm-source",
+  "version": "1.0.0",
+  "description": "Compliance-safe prediction-market intelligence for the Agora Agents Hackathon.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "solc": "^0.8.24"
+  }
+}

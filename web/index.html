@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mandarin Market Oracle</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Agora Agents Hackathon · Arc Testnet Desk</p>
+          <h1>Mandarin Market Oracle</h1>
+        </div>
+        <div class="mode-strip" aria-label="Compliance mode">
+          <span>Read-only Polymarket</span>
+          <span>Testnet Risk Units</span>
+          <span>Arc Testnet Proof</span>
+        </div>
+      </header>
+
+      <section class="workbench" aria-label="Agent workbench">
+        <aside class="signal-panel">
+          <div class="panel-title">
+            <span>Signal Tape</span>
+            <strong id="signalCount">0</strong>
+          </div>
+          <div id="signalList" class="signal-list"></div>
+          <form id="intakeForm" class="intake-form">
+            <div class="panel-title compact">
+              <span>Controlled Intake</span>
+              <strong>Controlled</strong>
+            </div>
+            <label>
+              <span>Headline</span>
+              <textarea id="intakeHeadline" required minlength="4" rows="3" placeholder="Paste the original Mandarin headline or market signal"></textarea>
+            </label>
+            <label>
+              <span>Source</span>
+              <input id="intakeSource" required placeholder="Source name or URL, e.g. Eastmoney / Xueqiu / Weibo / exchange notice" />
+            </label>
+            <label>
+              <span>Theme</span>
+              <select id="intakeTheme">
+                <option value="">Auto-detect</option>
+                <option value="china_stimulus">China stimulus</option>
+                <option value="risk_off_china">China risk-off</option>
+                <option value="geopolitical_risk">Geopolitical risk</option>
+                <option value="btc_asia_momentum">BTC Asia momentum</option>
+              </select>
+            </label>
+            <label>
+              <span>Polymarket Query</span>
+              <div class="search-line">
+                <input id="marketQuery" placeholder="china / taiwan / bitcoin / stimulus" />
+                <button id="marketSearchButton" type="button">Search</button>
+              </div>
+            </label>
+            <div id="marketResults" class="market-results"></div>
+            <button type="submit">Submit Signal</button>
+            <p id="intakeStatus" class="intake-status"></p>
+          </form>
+        </aside>
+
+        <section class="analysis-panel">
+          <div class="market-map">
+            <div>
+              <p class="eyebrow">Mandarin Source Signal</p>
+              <h2 id="signalHeadline">Loading signal...</h2>
+              <p class="translation-label">English brief for judges</p>
+              <p id="signalTranslation" class="translation"></p>
+            </div>
+            <div class="score-stack">
+              <div>
+                <span>Source Quality</span>
+                <strong id="credibility">0%</strong>
+              </div>
+              <div>
+                <span>Flow Velocity</span>
+                <strong id="velocity">0%</strong>
+              </div>
+              <div>
+                <span>Age</span>
+                <strong id="freshness">0m</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <article class="market-card">
+              <p class="eyebrow">Prediction Market</p>
+              <h3 id="marketQuestion">Loading market...</h3>
+              <a id="marketLink" class="market-link" target="_blank" rel="noreferrer">Open market</a>
+              <div class="probability-row">
+                <div>
+                  <span>Market YES</span>
+                  <strong id="marketProb">0%</strong>
+                </div>
+                <div>
+                  <span>Agent Fair</span>
+                  <strong id="agentProb">0%</strong>
+                </div>
+                <div>
+                  <span>Edge</span>
+                  <strong id="edge">0%</strong>
+                </div>
+              </div>
+              <div class="bar-rail" aria-hidden="true">
+                <div id="marketBar" class="bar market"></div>
+                <div id="agentBar" class="bar agent"></div>
+              </div>
+              <p id="marketMeta" class="muted"></p>
+            </article>
+
+            <article class="decision-card">
+              <p class="eyebrow">English Market Impact</p>
+              <div class="decision-line">
+                <span id="directionPill" class="direction-pill">WAIT</span>
+                <strong id="positionSize">0 testnet risk units</strong>
+              </div>
+              <div class="agent-config">
+                <span id="agentMode">Deterministic + LLM</span>
+                <strong id="agentModel">Loading model...</strong>
+              </div>
+              <p id="decisionReason" class="decision-copy"></p>
+              <div class="llm-reasoning">
+                <div class="llm-header">
+                  <span>LLM Agent Reasoning</span>
+                  <button id="runReasoningButton" type="button">Ask LLM Analyst</button>
+                </div>
+                <p id="llmSummary"></p>
+                <p id="llmImpact"></p>
+                <p id="llmProbability"></p>
+                <p id="llmStatus" class="llm-status"></p>
+                <a href="/api/agent/prompt" target="_blank" rel="noreferrer">View prompt</a>
+              </div>
+              <div class="risk-box">
+                <span>Risk Flags</span>
+                <ul id="riskList"></ul>
+              </div>
+            </article>
+          </div>
+
+          <section class="evidence-section">
+            <div>
+              <p class="eyebrow">Evidence Chain</p>
+              <h3>Original Mandarin evidence and source trail</h3>
+            </div>
+            <ol id="evidenceList"></ol>
+          </section>
+        </section>
+
+        <aside class="receipt-panel">
+          <div class="panel-title">
+            <span>Web3 Verification</span>
+            <strong>Testnet</strong>
+          </div>
+          <div id="receiptCard" class="receipt-card"></div>
+          <div class="proof-action">
+            <button id="writeProofButton" type="button">Write Arc Proof</button>
+            <p id="proofStatus"></p>
+          </div>
+          <div class="portfolio-card">
+            <p class="eyebrow">Risk Budget</p>
+            <div class="portfolio-number">$10,000</div>
+            <p>Research budget. No real order execution, custody, or USDC transfer.</p>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
