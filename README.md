@@ -16,6 +16,43 @@ Mandarin Market Oracle reads real Chinese market/news signals, maps them to pric
 8. Writes the evidence hash and recommendation hash to the deployed Arc testnet registry.
 9. Shows a live validation summary computed only from current recommendations and recorded Arc receipts.
 
+## Core Thesis
+
+The trade is not the product. The verifiable research view is the product.
+
+Mandarin Market Oracle turns a live Chinese-language market signal into a structured,
+auditable research artifact: source evidence, Polymarket mapping, market-implied
+probability, agent fair probability, risk decision, and Arc proof payload.
+
+## Architecture
+
+```text
+Eastmoney news + A-share tape + controlled intake
+  -> Source Scout
+  -> Market Mapper against live priced Polymarket contracts
+  -> Deterministic Probability Estimator
+  -> Risk Auditor and WAIT/YES/NO policy
+  -> On-demand OpenAI-compatible Analyst
+  -> Research View Hash + Evidence Hash
+  -> Arc Testnet ReasoningRegistry
+  -> Proof Ledger and validation dashboard
+```
+
+## Judging Criteria Mapping
+
+- Agentic sophistication: the dashboard exposes the full five-stage agent trace:
+  Source Scout, Market Mapper, Probability Estimator, Risk Auditor, and Proof
+  Recorder. The LLM analyst is on-demand and cannot rewrite the deterministic
+  probability or decision.
+- Traction: the live app runs against current Eastmoney sources, live priced
+  Polymarket markets, and recorded Arc receipts. Static replay data is disabled.
+- Arc/Circle relevance: Arc testnet is used as a low-cost provenance layer for
+  evidence hashes and research-view hashes. The app intentionally avoids custody,
+  real order execution, and real USDC transfer.
+- Innovation: English prediction markets often price English news first. This
+  desk watches Mandarin market structure first and translates it into a
+  verifiable prediction-market research view.
+
 ## Real Data Sources
 
 Current implemented sources:

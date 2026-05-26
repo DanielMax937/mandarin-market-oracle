@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mandarin Market Oracle</title>
-    <link rel="stylesheet" href="./styles.css?v=market-candidates-20260526" />
+    <link rel="stylesheet" href="./styles.css?v=trace-ledger-20260526" />
   </head>
   <body>
     <main class="shell">
@@ -96,6 +96,8 @@
             </div>
           </div>
 
+          <div id="agentWorkflow" class="agent-workflow"></div>
+
           <div class="grid-2">
             <article class="market-card">
               <p class="eyebrow">Prediction Market</p>
@@ -179,6 +181,7 @@
             <button id="writeProofButton" type="button">Write Arc Proof</button>
             <p id="proofStatus"></p>
           </div>
+          <div id="proofLedger" class="proof-ledger"></div>
           <div class="portfolio-card">
             <p class="eyebrow">Risk Budget</p>
             <div class="portfolio-number">$10,000</div>
@@ -210,6 +213,6 @@
         if (node) node.textContent = "Async error: " + reason;
       };
     </script>
-    <script src="./app.js?v=market-candidates-20260526"></script>
+    <script src="./app.js?v=trace-ledger-20260526"></script>
   </body>
 </html>

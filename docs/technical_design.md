@@ -12,6 +12,7 @@ Live Mandarin sources
   -> On-demand OpenAI-compatible reasoning explainer
   -> Testnet risk sizing
   -> Arc testnet proof writer
+  -> Proof ledger
   -> Live validation tracker
   -> Trading-desk dashboard
 ```
@@ -66,6 +67,27 @@ The proof payload endpoint exposes the exact registry event payload and payload 
 ```
 
 The payload endpoint is derived from the current live recommendation and recorded receipt state.
+
+## Agent Trace Layer
+
+The UI exposes the internal workflow as five agent responsibilities without
+changing the underlying deterministic policy:
+
+- Source Scout: source identity, freshness, credibility, and evidence trail.
+- Market Mapper: selected Polymarket contract, candidate audit, and proxy labeling.
+- Probability Estimator: market probability, agent fair probability, and edge.
+- Risk Auditor: risk flags, edge threshold, and testnet-only risk units.
+- Proof Recorder: prepared/submitted Arc proof state and hash identity.
+
+This is presentation over real state. It does not add synthetic reasoning,
+orders, seed data, or hidden model calls.
+
+## Proof Ledger Layer
+
+The dashboard derives a proof ledger from the current `/api/snapshot` response.
+Each row links a live signal to its selected market, direction, edge, research
+view hash, and Arc transaction status. Submitted rows can be verified on Arcscan;
+prepared rows expose the exact event payload via `/api/proofs/{signal_id}/payload`.
 
 ## Live Validation Layer
 

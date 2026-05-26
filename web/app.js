@@ -37,6 +37,8 @@ const formatScore = (value) =>
   Number(value || 0).toFixed(1);
 const shortHash = (value) =>
   value ? `${value.slice(0, 10)}...${value.slice(-8)}` : "not submitted";
+const shortSlug = (value) =>
+  value && value.length > 46 ? `${value.slice(0, 36)}...` : value || "unmapped";
 const proofCacheKey = (signalId) => signalId;
 
 async function requestJson(url, options = {}) {
@@ -177,6 +179,7 @@ function renderAnalysis() {
   document.querySelector("#agentModel").textContent = state.agent
     ? `${state.agent.provider} · ${state.agent.model}`
     : "openai-compatible";
+  renderAgentWorkflow(recommendation);
   document.querySelector("#llmSummary").textContent =
     (reasoning && reasoning.english_summary) || "LLM analyst has not been run for this signal.";
   document.querySelector("#llmImpact").textContent =
@@ -205,6 +208,87 @@ function renderAnalysis() {
     .join("");
 
   renderReceipt(receipt, signal.id);
+}
+
+function renderAgentWorkflow(recommendation) {
+  const container = document.querySelector("#agentWorkflow");
+  if (!container) return;
+  const { signal, market, decision, receipt, decision_trace: trace } = recommendation;
+  const candidates = recommendation.market_candidates || [];
+  const selectedCandidate = candidates.find(
+    (candidate) => candidate.selected || (candidate.market && candidate.market.slug === market.slug),
+  );
+  const outputs = (trace && trace.outputs) || {};
+  const directness = selectedCandidate
+    ? selectedCandidate.match_label
+    : "Priced market match";
+  const proofStatus = receipt.tx_hash ? "Submitted" : "Prepared";
+  const proofCopy = receipt.tx_hash
+    ? `Evidence and research hashes are committed on ${state.provenanceNetwork}.`
+    : `Evidence and research hashes are ready to submit to ${state.provenanceNetwork}.`;
+  const stages = [
+    {
+      role: "Source Scout",
+      badge: String(signal.source_type || "live source").replace(/_/g, " "),
+      metric: formatPct(signal.credibility),
+      copy: `${signal.source}; ${signal.freshness_minutes}m old; Mandarin evidence preserved for review.`,
+    },
+    {
+      role: "Market Mapper",
+      badge: directness,
+      metric: `${Math.max(candidates.length, 1)} candidates`,
+      copy: `Selected ${shortSlug(market.slug)}. ${
+        selectedCandidate ? selectedCandidate.reason : "Mapped from live priced Polymarket search."
+      }`,
+    },
+    {
+      role: "Probability Estimator",
+      badge: "Deterministic",
+      metric: formatSignedPct(decision.edge),
+      copy: `Market YES ${formatPct(decision.market_probability)} vs agent fair ${formatPct(
+        decision.agent_probability,
+      )}; formula uses credibility, velocity, freshness, risk, and liquidity.`,
+    },
+    {
+      role: "Risk Auditor",
+      badge: decision.direction,
+      metric: formatUsdc(decision.risk_unit_size),
+      copy: `${signal.risk_flags.length} risk flags checked. ${
+        outputs.direction_rule || "Direction is gated by edge threshold before any testnet risk sizing."
+      }`,
+    },
+    {
+      role: "Proof Recorder",
+      badge: proofStatus,
+      metric: shortHash(receipt.tx_hash || receipt.recommendation_hash),
+      copy: proofCopy,
+    },
+  ];
+
+  container.innerHTML = `
+    <div class="agent-workflow-header">
+      <span>Agent Trace</span>
+      <strong>5-stage live workflow</strong>
+    </div>
+    <div class="agent-step-list">
+      ${stages
+        .map(
+          (stage) => `
+            <div class="agent-step">
+              <div>
+                <span>${escapeHtml(stage.role)}</span>
+                <strong>${escapeHtml(stage.metric)}</strong>
+              </div>
+              <p>
+                <em>${escapeHtml(stage.badge)}</em>
+                ${escapeHtml(stage.copy)}
+              </p>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function renderMarketCandidates(candidates, selectedSlug) {
@@ -399,8 +483,49 @@ function render() {
   renderValidation();
   renderSignals();
   renderAnalysis();
+  renderProofLedger();
   const proofButton = document.querySelector("#writeProofButton");
   proofButton.textContent = "Write Arc Proof";
+}
+
+function renderProofLedger() {
+  const container = document.querySelector("#proofLedger");
+  if (!container) return;
+  if (!state.recommendations.length) {
+    container.innerHTML = "";
+    return;
+  }
+  const submitted = state.recommendations.filter((item) => item.receipt.tx_hash).length;
+  container.innerHTML = `
+    <div class="proof-ledger-header">
+      <span>Proof Ledger</span>
+      <strong>${submitted}/${state.recommendations.length} submitted</strong>
+    </div>
+    <div class="proof-ledger-list">
+      ${state.recommendations
+        .map(({ signal, market, decision, receipt }) => {
+          const active = signal.id === state.selectedSignalId;
+          const status = receipt.tx_hash ? "Arc tx" : "prepared";
+          return `
+            <button class="proof-ledger-row ${active ? "active" : ""}" type="button" data-signal="${escapeHtml(signal.id)}">
+              <span>
+                <strong>${escapeHtml(status)}</strong>
+                <em>${escapeHtml(decision.direction)} · ${formatSignedPct(decision.edge)}</em>
+              </span>
+              <b>${escapeHtml(shortSlug(market.slug))}</b>
+              <small>${escapeHtml(shortHash(receipt.tx_hash || receipt.recommendation_hash))}</small>
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+  container.querySelectorAll(".proof-ledger-row").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedSignalId = button.dataset.signal;
+      render();
+    });
+  });
 }
 
 function setupProofButton() {
