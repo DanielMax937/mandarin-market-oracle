@@ -88,9 +88,9 @@ button:disabled {
 }
 
 .judge-console h2 {
-  margin-bottom: 6px;
-  font-size: 20px;
-  line-height: 1.2;
+  margin: 20px 0 6px;
+  font-size: 16px;
+  line-height: 1.25;
 }
 
 .mode-status {
@@ -252,18 +252,20 @@ h3 {
 }
 
 .workbench {
+  --workbench-height: max(620px, calc(100vh - 250px));
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .workspace-scroll {
   display: grid;
   grid-template-columns: 340px minmax(720px, 1fr);
   gap: 12px;
+  height: var(--workbench-height);
   min-width: 0;
-  max-height: calc(100vh - 250px);
+  max-height: var(--workbench-height);
   overflow: auto;
   overscroll-behavior: contain;
   padding-bottom: 10px;
@@ -296,11 +298,19 @@ h3 {
 .receipt-panel {
   position: sticky;
   top: 12px;
-  overflow: hidden;
 }
 
 .signal-panel {
+  height: 100%;
+  max-height: 100%;
   min-width: 340px;
+  overflow: auto;
+}
+
+.receipt-panel {
+  height: var(--workbench-height);
+  max-height: var(--workbench-height);
+  overflow: auto;
 }
 
 .analysis-panel {
@@ -920,6 +930,7 @@ h3 {
 
   .workspace-scroll {
     grid-template-columns: 1fr;
+    height: auto;
     max-height: none;
     overflow: visible;
     padding-bottom: 0;
@@ -928,7 +939,10 @@ h3 {
   .signal-panel,
   .receipt-panel {
     position: static;
+    height: auto;
+    max-height: none;
     min-width: 0;
+    overflow: visible;
   }
 
   .analysis-panel {
