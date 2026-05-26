@@ -37,7 +37,7 @@ def sample_signal() -> Signal:
         velocity=0.75,
         freshness_minutes=5,
         evidence=["Eastmoney public market-data endpoint"],
-        risk_flags=["Research-only recommendation; no real-money order execution"],
+        risk_flags=["Research-only view; no real-money order execution"],
     )
 
 

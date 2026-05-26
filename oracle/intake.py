@@ -38,7 +38,7 @@ def normalize_signal(request: SignalIntakeRequest) -> Signal:
     market_line = (
         f"Mapped to Polymarket market: {request.market_question}"
         if request.market_question
-        else "Agent must map the source to a Polymarket contract before sizing a recommendation"
+        else "Agent must map the source to a Polymarket contract before preparing a research view"
     )
     evidence = request.evidence or [
         f"Human-curated Mandarin source: {request.source}",
@@ -47,7 +47,7 @@ def normalize_signal(request: SignalIntakeRequest) -> Signal:
     ]
     risk_flags = request.risk_flags or [
         "Human-curated signal requires independent confirmation",
-        "Research-only recommendation; no real-money order execution",
+        "Research-only view; no real-money order execution",
     ]
     stable_id = datetime.now(timezone.utc).strftime("usr-%Y%m%d%H%M%S")
     return Signal(

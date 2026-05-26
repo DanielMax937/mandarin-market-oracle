@@ -888,6 +888,27 @@ h3 {
   line-height: 1;
 }
 
+.disclaimer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin-top: 14px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.disclaimer strong {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 @media (max-width: 1180px) {
   .judge-console {
     grid-template-columns: 1fr;
@@ -928,7 +949,8 @@ h3 {
   .topbar,
   .market-map,
   .grid-2,
-  .evidence-section {
+  .evidence-section,
+  .disclaimer {
     grid-template-columns: 1fr;
   }
 

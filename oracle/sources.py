@@ -204,7 +204,7 @@ class LiveMandarinSourceClient:
                     ],
                     risk_flags=[
                         "News impact requires cross-source confirmation before aggressive sizing",
-                        "System emits research recommendations only; it does not place orders",
+                        "System emits research views only; it does not place orders",
                     ],
                 )
             )
@@ -254,7 +254,7 @@ class LiveMandarinSourceClient:
                     ],
                     risk_flags=[
                         "Market tape is live but not a standalone causal explanation",
-                        "System emits research recommendations only; it does not place orders",
+                        "System emits research views only; it does not place orders",
                     ],
                 )
             )

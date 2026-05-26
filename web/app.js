@@ -211,7 +211,7 @@ function renderDecisionTrace(trace) {
   if (!trace || !trace.inputs) {
     inputs.innerHTML = "";
     adjustments.innerHTML = "";
-    rule.textContent = "Decision trace unavailable for this recommendation.";
+    rule.textContent = "Decision trace unavailable for this research view.";
     return;
   }
   inputs.innerHTML = trace.inputs
@@ -267,7 +267,7 @@ function renderReceipt(receipt, signalId) {
         <strong>${hashState}</strong>
       </div>
       <div>
-        <span>Recommendation hash</span>
+        <span>Research view hash</span>
         <strong>${hashState}</strong>
       </div>
       <div>
@@ -298,7 +298,7 @@ function renderReceipt(receipt, signalId) {
       <span class="receipt-value">${escapeHtml((details && details.payload_hash) || "loading payload hash")}</span>
     </div>
     <div class="receipt-row">
-      <span class="receipt-label">Recommendation</span>
+      <span class="receipt-label">Research View</span>
       <span class="receipt-value">${escapeHtml(receipt.direction)} · ${formatPct(
         receipt.agent_probability,
       )} fair · ${formatUsdc(receipt.risk_unit_size)}</span>
@@ -308,7 +308,7 @@ function renderReceipt(receipt, signalId) {
       <span class="receipt-value">${shortHash(receipt.evidence_hash)}</span>
     </div>
     <div class="receipt-row">
-      <span class="receipt-label">Recommendation Hash</span>
+      <span class="receipt-label">Research View Hash</span>
       <span class="receipt-value">${shortHash(receipt.recommendation_hash)}</span>
     </div>
   `;
@@ -485,7 +485,7 @@ function setupIntakeForm() {
       state.marketResults = [];
       state.selectedMarket = null;
       renderMarketResults();
-      status.textContent = "Signal accepted. Recommendation and Arc testnet proof prepared.";
+      status.textContent = "Signal accepted. Research view and Arc testnet proof prepared.";
       await loadData({ preserveSelection: true });
     } catch (error) {
       status.textContent = `Intake unavailable: ${error.message}`;
@@ -527,7 +527,7 @@ async function loadData(options = {}) {
     document.querySelector("#modeStatus").textContent = "Loading live data...";
     const snapshot = await requestJson("/api/snapshot");
     document.querySelector("#modeStatus").textContent =
-      `Loaded ${snapshot.recommendations.length} live recommendations.`;
+      `Loaded ${snapshot.recommendations.length} live research views.`;
     state.recommendations = snapshot.recommendations;
     state.provenanceNetwork = snapshot.provenance_network || state.provenanceNetwork;
     state.verificationContract = snapshot.verification_contract || state.verificationContract;
