@@ -28,6 +28,7 @@ yarn-error.log*
 data/user_signals.json
 data/user_markets.json
 data/proof_ledger.json
+data/proof_receipts.json
 
 # OS and editor noise
 .DS_Store

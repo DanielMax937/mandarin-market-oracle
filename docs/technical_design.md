@@ -12,6 +12,7 @@ Live Mandarin sources
   -> On-demand OpenAI-compatible reasoning explainer
   -> Testnet risk sizing
   -> Arc testnet proof writer
+  -> Live validation tracker
   -> Trading-desk dashboard
 ```
 
@@ -41,6 +42,8 @@ The estimator combines:
 
 It returns `YES`, `NO`, or `WAIT`. Sizing is shown as testnet risk units for risk communication only.
 
+Each recommendation now includes a machine-readable decision trace: weighted credibility, velocity, freshness, risk penalties, liquidity adjustment, edge threshold, conviction, and capped Kelly fraction. This makes the agent's decision policy inspectable in the dashboard instead of hiding it inside one paragraph of rationale.
+
 The LLM layer does not decide the trade direction or rewrite probabilities. It is called only after a user action through `/api/recommendations/{signal_id}/reasoning`. It receives the already computed market probability, agent probability, edge, direction, and risk units, then explains the Mandarin signal in English for judges and traders. The prompt version is `mandarin-alpha-v1`, exposed through `/api/agent/prompt`.
 
 LLM credentials live in `.env.local` only:
@@ -55,6 +58,18 @@ LLM credentials live in `.env.local` only:
 `ReasoningRegistry` stores recommendation hashes and emits proof events on Arc testnet. `ProofWriter` submits real EVM transactions when `ARC_RPC_URL`, `ARC_REASONING_REGISTRY_ADDRESS`, and a testnet-only `ARC_PRIVATE_KEY` are configured.
 
 Submitted proof transaction hashes are persisted to `data/proof_receipts.json`; unsubmitted recommendations display `not submitted yet`.
+
+The proof payload endpoint exposes the exact registry event payload and payload hash for any recommendation:
+
+```text
+/api/proofs/{signal_id}/payload
+```
+
+The payload endpoint is derived from the current live recommendation and recorded receipt state.
+
+## Live Validation Layer
+
+`/api/validation` reports metrics computed from current live-source recommendations only: recommendation count, live source count, priced market count, average absolute edge, WAIT count, and proof coverage. It does not include replay windows, static outcomes, or synthetic price moves.
 
 ## Compliance Boundary
 

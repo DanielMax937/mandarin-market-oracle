@@ -7,12 +7,13 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from oracle.config import Settings
-from oracle.engine import OracleService, canonical_hash, decide, matching_market
+from oracle.engine import OracleService, canonical_hash, decide, decision_trace, matching_market
 from oracle.intake import SignalIntakeService, infer_theme
 from oracle.models import Market, Signal, SignalIntakeRequest
 from oracle.polymarket import PolymarketClient
-from oracle.proof import ProofWriter
+from oracle.proof import ProofWriter, proof_details
 from oracle.repository import DataRepository
+from oracle.validation import validation_summary
 
 
 def sample_signal() -> Signal:
@@ -133,6 +134,41 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(result.mode, "evm")
         self.assertEqual(result.status, "blocked")
         self.assertIn("ARC_REASONING_REGISTRY_ADDRESS", result.message)
+
+    def test_decision_trace_exposes_weighted_agent_logic(self) -> None:
+        signal = self.repository.signals()[0]
+        market = matching_market(signal, self.repository.markets())
+        decision = decide(signal, market, self.config)
+        trace = decision_trace(signal, market, decision, self.config)
+        self.assertIn("formula", trace)
+        self.assertEqual(len(trace["inputs"]), 3)
+        self.assertEqual(
+            trace["outputs"]["direction_rule"],
+            "YES if edge > 5.5%; NO if edge < -5.5%; otherwise WAIT.",
+        )
+        self.assertLessEqual(
+            trace["outputs"]["kelly_fraction_capped"],
+            self.config.max_position_pct,
+        )
+
+    def test_proof_details_include_registry_payload_and_explorer_links(self) -> None:
+        item = self.service.recommendations(signal_id="live-test-signal")[0]
+        details = proof_details(item.receipt, "0x219E7613F20f6170E02e3Ebfa87EBeC6A484d800")
+        self.assertEqual(details["status"], "prepared")
+        self.assertEqual(
+            details["payload"]["recommendation_hash"],
+            item.receipt.recommendation_hash,
+        )
+        self.assertIsNone(details["explorer_url"])
+        self.assertIn("/address/", details["registry_url"])
+
+    def test_live_validation_summary_uses_current_recommendations_only(self) -> None:
+        summary = validation_summary(self.service.recommendations())
+        self.assertEqual(summary["mode"], "live")
+        self.assertEqual(summary["recommendation_count"], 1)
+        self.assertEqual(summary["live_source_count"], 1)
+        self.assertEqual(summary["priced_market_count"], 1)
+        self.assertEqual(summary["events"], [])
 
 
 if __name__ == "__main__":

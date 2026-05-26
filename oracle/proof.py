@@ -15,6 +15,7 @@ from oracle.models import Receipt
 
 
 ARC_CONFIG = Path.home() / ".arc-canteen" / "config.yaml"
+DEFAULT_ARC_EXPLORER_BASE_URL = "https://testnet.arcscan.app"
 
 
 @dataclass(frozen=True)
@@ -59,13 +60,54 @@ def receipt_payload(receipt: Receipt) -> dict[str, Any]:
     }
 
 
+def explorer_tx_url(tx_hash: str | None, explorer_base_url: str | None = None) -> str | None:
+    if not tx_hash:
+        return None
+    base_url = (explorer_base_url or DEFAULT_ARC_EXPLORER_BASE_URL).rstrip("/")
+    return f"{base_url}/tx/{tx_hash}"
+
+
+def explorer_address_url(address: str | None, explorer_base_url: str | None = None) -> str | None:
+    if not address:
+        return None
+    base_url = (explorer_base_url or DEFAULT_ARC_EXPLORER_BASE_URL).rstrip("/")
+    return f"{base_url}/address/{address}"
+
+
+def proof_details(
+    receipt: Receipt,
+    contract_address: str | None = None,
+    explorer_base_url: str | None = None,
+) -> dict[str, Any]:
+    payload = receipt_payload(receipt)
+    payload_hash = canonical_hash(payload)
+    status = "submitted" if receipt.tx_hash else "prepared"
+    return {
+        "mode": "evm",
+        "status": status,
+        "receipt_id": receipt.receipt_id,
+        "network": receipt.network,
+        "tx_hash": receipt.tx_hash,
+        "explorer_url": explorer_tx_url(receipt.tx_hash, explorer_base_url),
+        "registry_contract": contract_address,
+        "registry_url": explorer_address_url(contract_address, explorer_base_url),
+        "message": (
+            "Archived Arc testnet transaction is available for verification."
+            if receipt.tx_hash
+            else "Proof payload is prepared and ready for Arc testnet submission."
+        ),
+        "payload_hash": payload_hash,
+        "payload": payload,
+    }
+
+
 class ProofWriter:
     def __init__(self, config: Settings = settings) -> None:
         self.config = config
         self.mode = os.getenv("ARC_PROOF_MODE", "evm")
         self.rpc_url = os.getenv("ARC_RPC_URL") or self._rpc_from_arc_cli_config()
         self.contract_address = os.getenv("ARC_REASONING_REGISTRY_ADDRESS")
-        self.explorer_base_url = os.getenv("ARC_EXPLORER_BASE_URL")
+        self.explorer_base_url = os.getenv("ARC_EXPLORER_BASE_URL") or DEFAULT_ARC_EXPLORER_BASE_URL
         self.private_key = os.getenv("ARC_PRIVATE_KEY")
 
     def _rpc_from_arc_cli_config(self) -> str | None:
@@ -143,11 +185,7 @@ class ProofWriter:
                 payload_hash=payload_hash,
             )
 
-        explorer_url = (
-            f"{self.explorer_base_url.rstrip('/')}/tx/{tx_hash}"
-            if self.explorer_base_url
-            else None
-        )
+        explorer_url = explorer_tx_url(tx_hash, self.explorer_base_url)
         return ProofResult(
             mode="evm",
             status="submitted",

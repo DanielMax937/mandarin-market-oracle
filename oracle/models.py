@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -146,6 +147,7 @@ class Recommendation(BaseModel):
     signal: Signal
     market: Market
     decision: Decision
+    decision_trace: dict[str, Any] = Field(default_factory=dict)
     llm_reasoning: LLMReasoning | None = None
     receipt: Receipt
 

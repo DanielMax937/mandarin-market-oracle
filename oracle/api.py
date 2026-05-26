@@ -11,7 +11,8 @@ from oracle.engine import OracleService
 from oracle.intake import SignalIntakeService
 from oracle.models import SignalIntakeRequest
 from oracle.polymarket import PolymarketClient
-from oracle.proof import ProofWriter
+from oracle.proof import ProofWriter, proof_details
+from oracle.validation import validation_summary
 
 
 app = FastAPI(
@@ -34,6 +35,15 @@ polymarket_client = PolymarketClient()
 proof_writer = ProofWriter()
 
 
+def _registry_contract() -> str | None:
+    return proof_writer.contract_address or settings.arc_reasoning_registry_address
+
+
+def _reject_non_live_mode(mode: str | None) -> None:
+    if mode not in {None, "live"}:
+        raise HTTPException(status_code=400, detail="Only live mode is supported; replay data is disabled.")
+
+
 @app.get("/api/health")
 def health() -> dict[str, str | None]:
     settings.validate_compliance_boundary()
@@ -53,15 +63,22 @@ def health() -> dict[str, str | None]:
 
 
 @app.get("/api/snapshot")
-def snapshot() -> dict:
+def snapshot(mode: str | None = None) -> dict:
+    _reject_non_live_mode(mode)
     try:
-        return service.snapshot().model_dump(mode="json")
+        snapshot_model = service.snapshot()
+        payload = snapshot_model.model_dump(mode="json")
+        payload["dataset_mode"] = "live"
+        payload["verification_contract"] = _registry_contract()
+        payload["validation"] = validation_summary(snapshot_model.recommendations)
+        return payload
     except Exception as exc:  # pragma: no cover - FastAPI boundary
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/recommendations/{signal_id}")
-def recommendation(signal_id: str) -> dict:
+def recommendation(signal_id: str, mode: str | None = None) -> dict:
+    _reject_non_live_mode(mode)
     try:
         item = service.recommendations(signal_id=signal_id)[0]
     except LookupError as exc:
@@ -70,7 +87,8 @@ def recommendation(signal_id: str) -> dict:
 
 
 @app.post("/api/recommendations/{signal_id}/reasoning")
-def recommendation_reasoning(signal_id: str) -> dict:
+def recommendation_reasoning(signal_id: str, mode: str | None = None) -> dict:
+    _reject_non_live_mode(mode)
     try:
         item = service.explain_recommendation(signal_id)
     except LookupError as exc:
@@ -79,22 +97,44 @@ def recommendation_reasoning(signal_id: str) -> dict:
 
 
 @app.get("/api/agent/prompt")
-def agent_prompt(signal_id: str | None = None) -> dict:
+def agent_prompt(signal_id: str | None = None, mode: str | None = None) -> dict:
+    _reject_non_live_mode(mode)
     return service.prompt_config(signal_id=signal_id)
 
 
+@app.get("/api/validation")
+def validation(mode: str | None = None) -> dict:
+    _reject_non_live_mode(mode)
+    return validation_summary(service.recommendations())
+
+
+@app.get("/api/proofs/{signal_id}/payload")
+def proof_payload(signal_id: str, mode: str | None = None) -> dict:
+    _reject_non_live_mode(mode)
+    try:
+        item = service.recommendations(signal_id=signal_id)[0]
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return proof_details(item.receipt, contract_address=_registry_contract())
+
+
 @app.post("/api/proofs/{signal_id}")
-def write_proof(signal_id: str) -> dict:
+def write_proof(signal_id: str, mode: str | None = None) -> dict:
+    _reject_non_live_mode(mode)
     try:
         item = service.recommendations(signal_id=signal_id)[0]
         result = proof_writer.write(item.receipt)
         if result.status == "submitted" and result.tx_hash:
-            service.repository.append_receipt(item.receipt.model_copy(update={"tx_hash": result.tx_hash}))
+            item.receipt = item.receipt.model_copy(update={"tx_hash": result.tx_hash})
+            service.repository.append_receipt(item.receipt)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return result.as_dict()
+    return {
+        **proof_details(item.receipt, contract_address=_registry_contract()),
+        **result.as_dict(),
+    }
 
 
 @app.post("/api/intake/signals")

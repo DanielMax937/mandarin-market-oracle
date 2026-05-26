@@ -14,6 +14,7 @@ Mandarin Market Oracle reads real Chinese market/news signals, maps them to pric
 6. Keeps LLM reasoning on-demand; a trader clicks `Ask LLM Analyst` when explanation is needed.
 7. Sizes exposure in testnet risk units for risk communication.
 8. Writes the evidence hash and recommendation hash to the deployed Arc testnet registry.
+9. Shows a live validation summary computed only from current recommendations and recorded Arc receipts.
 
 ## Real Data Sources
 
@@ -78,6 +79,24 @@ curl -X POST http://127.0.0.1:8000/api/recommendations/<signal-id>/reasoning
 ```
 
 The dashboard links to the prompt from the decision panel and only spends model tokens after the analyst action.
+
+## Live Validation
+
+The app does not fall back to static records. The validation panel is computed from current live-source recommendations:
+
+- live source coverage
+- priced Polymarket market coverage
+- average absolute edge
+- WAIT count
+- Arc proof coverage from recorded receipt hashes
+
+Useful endpoints:
+
+```bash
+curl 'http://127.0.0.1:8000/api/snapshot'
+curl 'http://127.0.0.1:8000/api/validation'
+curl 'http://127.0.0.1:8000/api/proofs/<signal-id>/payload'
+```
 
 ## Arc Testnet Proofs
 

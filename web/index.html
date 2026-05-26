@@ -20,6 +20,15 @@
         </div>
       </header>
 
+      <section class="judge-console" aria-label="Live agent console">
+        <div>
+          <p class="eyebrow">Live Agent Console</p>
+          <h2>Current Mandarin sources mapped to real priced Polymarket markets.</h2>
+          <p id="modeStatus" class="mode-status"></p>
+        </div>
+        <div id="validationCards" class="validation-cards"></div>
+      </section>
+
       <section class="workbench" aria-label="Agent workbench">
         <aside class="signal-panel">
           <div class="panel-title">
@@ -30,7 +39,6 @@
           <form id="intakeForm" class="intake-form">
             <div class="panel-title compact">
               <span>Controlled Intake</span>
-              <strong>Controlled</strong>
             </div>
             <label>
               <span>Headline</span>
@@ -125,15 +133,21 @@
               </div>
               <p id="decisionReason" class="decision-copy"></p>
               <div class="llm-reasoning">
-                <div class="llm-header">
-                  <span>LLM Agent Reasoning</span>
-                  <button id="runReasoningButton" type="button">Ask LLM Analyst</button>
-                </div>
+              <div class="llm-header">
+                <span>LLM Agent Reasoning</span>
+                <button id="runReasoningButton" type="button">Ask LLM Analyst</button>
+              </div>
                 <p id="llmSummary"></p>
                 <p id="llmImpact"></p>
                 <p id="llmProbability"></p>
                 <p id="llmStatus" class="llm-status"></p>
                 <a href="/api/agent/prompt" target="_blank" rel="noreferrer">View prompt</a>
+              </div>
+              <div class="decision-trace">
+                <span>Decision Trace</span>
+                <div id="traceInputs" class="trace-grid"></div>
+                <div id="traceAdjustments" class="trace-grid"></div>
+                <p id="traceRule"></p>
               </div>
               <div class="risk-box">
                 <span>Risk Flags</span>
@@ -157,6 +171,7 @@
             <strong>Testnet</strong>
           </div>
           <div id="receiptCard" class="receipt-card"></div>
+          <div id="proofPayload" class="proof-payload"></div>
           <div class="proof-action">
             <button id="writeProofButton" type="button">Write Arc Proof</button>
             <p id="proofStatus"></p>
@@ -170,6 +185,17 @@
       </section>
     </main>
 
-    <script src="./app.js"></script>
+    <script>
+      window.onerror = function (message) {
+        var node = document.getElementById("modeStatus");
+        if (node) node.textContent = "Script error: " + message;
+      };
+      window.onunhandledrejection = function (event) {
+        var node = document.getElementById("modeStatus");
+        var reason = event && event.reason ? event.reason.message || event.reason : "unknown";
+        if (node) node.textContent = "Async error: " + reason;
+      };
+    </script>
+    <script src="./app.js?v=live-dom-20260526"></script>
   </body>
 </html>

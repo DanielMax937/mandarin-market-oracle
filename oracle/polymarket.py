@@ -67,19 +67,6 @@ class PolymarketClient:
             for event in events:
                 if not isinstance(event, dict):
                     continue
-                records.append(
-                    {
-                        "id": event.get("id"),
-                        "slug": event.get("slug"),
-                        "question": event.get("title"),
-                        "title": event.get("title"),
-                        "category": event.get("category"),
-                        "liquidity": event.get("liquidity"),
-                        "volume": event.get("volume"),
-                        "active": event.get("active"),
-                        "closed": event.get("closed"),
-                    }
-                )
                 markets = event.get("markets")
                 if isinstance(markets, list):
                     records.extend(item for item in markets if isinstance(item, dict))
@@ -95,6 +82,11 @@ class PolymarketClient:
                 if prices:
                     yes_price = float(prices[0])
             except (TypeError, ValueError, json.JSONDecodeError):
+                yes_price = None
+        if yes_price is None and isinstance(outcome_prices, list) and outcome_prices:
+            try:
+                yes_price = float(outcome_prices[0])
+            except (TypeError, ValueError):
                 yes_price = None
         if yes_price is None:
             for key in ("lastTradePrice", "bestAsk", "bestBid"):
@@ -120,6 +112,24 @@ class PolymarketClient:
             "expiry": expiry,
         }
 
+    def _real_priced_results(
+        self,
+        records: list[dict[str, Any]],
+    ) -> list[PolymarketSearchResult]:
+        results: list[PolymarketSearchResult] = []
+        for record in records:
+            item = PolymarketSearchResult.model_validate(self._normalize_record(record))
+            if item.slug is None or (item.question is None and item.title is None):
+                continue
+            if item.yes_price is None:
+                continue
+            if item.closed is True or item.active is False:
+                continue
+            if item.expiry is None:
+                continue
+            results.append(item)
+        return results
+
     def _filter_records(self, records: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
         tokens = [token for token in query.lower().strip().split() if token]
         if not tokens:
@@ -137,14 +147,15 @@ class PolymarketClient:
     def search(self, query: str, limit: int = 10) -> list[PolymarketSearchResult]:
         payload = self._open_json("/public-search", {"q": query, "query": query, "limit": limit})
         records = self._filter_records(self._flatten_search_payload(payload), query)
-        if not records:
+        results = self._real_priced_results(records)
+        if not results:
             markets_payload = self._open_json(
                 "/markets",
                 {"limit": max(limit, 25), "active": "true", "closed": "false", "search": query},
             )
             records = self._filter_records(self._flatten_search_payload(markets_payload), query)
-        normalized = [self._normalize_record(item) for item in records[:limit]]
-        return [PolymarketSearchResult.model_validate(item) for item in normalized]
+            results = self._real_priced_results(records)
+        return results[:limit]
 
     def active_markets(self, limit: int = 25) -> list[PolymarketSearchResult]:
         payload = self._open_json(
@@ -154,5 +165,4 @@ class PolymarketClient:
         records = payload.get("markets", payload) if isinstance(payload, dict) else payload
         if not isinstance(records, list):
             return []
-        normalized = [self._normalize_record(item) for item in records[:limit]]
-        return [PolymarketSearchResult.model_validate(item) for item in normalized]
+        return self._real_priced_results(records)[:limit]

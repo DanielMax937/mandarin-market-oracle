@@ -85,6 +85,76 @@ def decide(signal: Signal, market: Market, config: Settings = settings) -> Decis
     )
 
 
+def decision_trace(signal: Signal, market: Market, decision: Decision, config: Settings = settings) -> dict[str, Any]:
+    fresh = freshness_score(signal.freshness_minutes)
+    signal_strength = (
+        signal.credibility * 0.42
+        + signal.velocity * 0.34
+        + fresh * 0.24
+    )
+    risk_penalty = min(len(signal.risk_flags) * 0.025, 0.09)
+    liquidity_dampener = 0.02 if market.liquidity_usdc > 150_000 else 0
+    raw_agent_probability = market.yes_price + (signal_strength - 0.55) * 0.46
+    adjusted_agent_probability = raw_agent_probability - risk_penalty + liquidity_dampener
+    conviction = (
+        signal.credibility * 0.55
+        + signal.velocity * 0.30
+        + fresh * 0.15
+    )
+    raw_edge = adjusted_agent_probability - market.yes_price
+    capped_kelly = min(max(abs(raw_edge) * conviction, 0), config.max_position_pct)
+    threshold = 0.055
+    return {
+        "formula": "market_yes + (signal_strength - 0.55) * 0.46 - risk_penalty + liquidity_adjustment",
+        "inputs": [
+            {
+                "label": "Credibility",
+                "value": round(signal.credibility, 4),
+                "weight": 0.42,
+                "why": "Source trust and attribution quality.",
+            },
+            {
+                "label": "Velocity",
+                "value": round(signal.velocity, 4),
+                "weight": 0.34,
+                "why": "How quickly the Mandarin signal is moving through market channels.",
+            },
+            {
+                "label": "Freshness",
+                "value": round(fresh, 4),
+                "weight": 0.24,
+                "why": f"{signal.freshness_minutes} minutes since source timestamp.",
+            },
+        ],
+        "adjustments": [
+            {
+                "label": "Risk penalty",
+                "value": round(-risk_penalty, 4),
+                "why": f"{len(signal.risk_flags)} caveats reduce aggressive sizing.",
+            },
+            {
+                "label": "Liquidity adjustment",
+                "value": round(liquidity_dampener, 4),
+                "why": "More liquid markets get a small confidence adjustment."
+                if liquidity_dampener
+                else "No liquidity adjustment below the 150k USDC threshold.",
+            },
+        ],
+        "outputs": {
+            "signal_strength": round(signal_strength, 4),
+            "raw_agent_probability": round(raw_agent_probability, 4),
+            "adjusted_agent_probability": round(max(0.05, min(0.92, adjusted_agent_probability)), 4),
+            "market_probability": decision.market_probability,
+            "edge": decision.edge,
+            "edge_threshold": threshold,
+            "conviction": round(conviction, 4),
+            "kelly_fraction_capped": round(capped_kelly, 4),
+            "max_position_pct": config.max_position_pct,
+            "direction_rule": "YES if edge > 5.5%; NO if edge < -5.5%; otherwise WAIT.",
+        },
+    }
+
+
 def matching_market(signal: Signal, markets: list[Market]) -> Market:
     for market in markets:
         if market.matched_theme == signal.theme:
@@ -232,6 +302,7 @@ class OracleService:
                     signal=signal,
                     market=market,
                     decision=decision,
+                    decision_trace=decision_trace(signal, market, decision, self.config),
                     llm_reasoning=llm_reasoning,
                     receipt=receipt,
                 )
