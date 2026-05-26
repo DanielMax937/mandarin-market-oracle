@@ -93,6 +93,16 @@ class Market(BaseModel):
     expiry: datetime
 
 
+class MarketCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    market: Market
+    relevance_score: float
+    match_label: str
+    reason: str
+    selected: bool = False
+
+
 class Decision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -146,6 +156,7 @@ class Recommendation(BaseModel):
 
     signal: Signal
     market: Market
+    market_candidates: list[MarketCandidate] = Field(default_factory=list)
     decision: Decision
     decision_trace: dict[str, Any] = Field(default_factory=dict)
     llm_reasoning: LLMReasoning | None = None

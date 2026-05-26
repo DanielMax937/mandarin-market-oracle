@@ -12,6 +12,7 @@ from oracle.models import (
     Decision,
     Direction,
     Market,
+    MarketCandidate,
     Receipt,
     Recommendation,
     Signal,
@@ -169,13 +170,29 @@ THEME_MARKET_RULES: dict[str, dict[str, Any]] = {
         "preferred": ("gdp", "growth", "economic growth", "economy", "tariff", "trade", "yuan", "renminbi"),
         "excluded": ("taiwan", "invade", "invasion", "blockade", "gta", "bitcoin", "btc", "crypto"),
         "min_score": 3.0,
+        "strong_score": 5.8,
+        "candidate_min_score": 2.0,
     },
     "risk_off_china": {
-        "queries": ("china gdp", "china economy", "china yuan"),
-        "anchors": ("china", "chinese", "yuan", "renminbi"),
-        "preferred": ("gdp", "growth", "economic growth", "economy", "yuan", "renminbi", "stocks"),
-        "excluded": ("taiwan", "invade", "invasion", "blockade", "gta", "bitcoin", "btc", "crypto"),
+        "queries": ("hang seng", "hsi", "china yuan", "china economy", "china gdp"),
+        "anchors": ("china", "chinese", "yuan", "renminbi", "hang seng", "hsi", "hong kong"),
+        "preferred": ("hang seng", "hsi", "hong kong", "yuan", "renminbi", "cnh", "stocks", "equities"),
+        "excluded": (
+            "taiwan",
+            "invade",
+            "invasion",
+            "blockade",
+            "gta",
+            "bitcoin",
+            "btc",
+            "crypto",
+            "temperature",
+            "weather",
+            "°c",
+        ),
         "min_score": 3.0,
+        "strong_score": 5.3,
+        "candidate_min_score": 2.0,
     },
     "geopolitical_risk": {
         "queries": ("china invade taiwan", "china taiwan", "taiwan blockade"),
@@ -183,6 +200,8 @@ THEME_MARKET_RULES: dict[str, dict[str, Any]] = {
         "preferred": ("taiwan", "invade", "invasion", "blockade", "military", "war"),
         "excluded": ("gdp", "growth", "bitcoin", "btc", "crypto", "gta"),
         "min_score": 3.0,
+        "strong_score": 5.2,
+        "candidate_min_score": 2.0,
     },
     "btc_asia_momentum": {
         "queries": ("bitcoin", "btc", "crypto"),
@@ -190,15 +209,65 @@ THEME_MARKET_RULES: dict[str, dict[str, Any]] = {
         "preferred": ("bitcoin", "btc", "crypto", "ethereum", "solana"),
         "excluded": ("taiwan", "gdp", "growth", "stock"),
         "min_score": 2.5,
+        "strong_score": 4.7,
+        "candidate_min_score": 1.5,
     },
 }
 
 
+SIGNAL_MARKET_INTENTS: dict[str, dict[str, tuple[str, ...]]] = {
+    "hsi": {
+        "signal": ("恒指", "恒生", "港股", "hong kong", "hang seng", "hsi"),
+        "market": ("hang seng", "hsi", "hong kong"),
+    },
+    "semiconductor": {
+        "signal": ("芯片", "半导体", "huawei", "华为", "semiconductor", "chip"),
+        "market": ("semiconductor", "chip", "huawei", "nvidia", "tsmc"),
+    },
+    "brokerage": {
+        "signal": ("券商", "证券", "brokerage", "securities"),
+        "market": ("stocks", "equities", "securities", "brokerage"),
+    },
+}
+
+
+def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
+    return any(term in text for term in terms)
+
+
+def signal_text(signal: Signal) -> str:
+    return " ".join(
+        (
+            signal.headline_zh,
+            signal.headline_en,
+            signal.theme,
+            signal.asset_link,
+            " ".join(signal.evidence),
+        )
+    ).lower()
+
+
+def signal_market_intents(signal: Signal) -> tuple[str, ...]:
+    text = signal_text(signal)
+    return tuple(
+        name
+        for name, terms in SIGNAL_MARKET_INTENTS.items()
+        if _contains_any(text, terms["signal"])
+    )
+
+
 def market_queries(signal: Signal) -> tuple[str, ...]:
     rule = THEME_MARKET_RULES.get(signal.theme)
-    if rule:
-        return tuple(rule["queries"])
-    return ("china",)
+    queries: list[str] = []
+    intents = signal_market_intents(signal)
+    if "hsi" in intents:
+        queries.extend(("hang seng", "hsi"))
+    if "semiconductor" in intents:
+        queries.extend(("semiconductor", "china semiconductor"))
+    if "brokerage" in intents:
+        queries.extend(("china stocks", "china securities"))
+    queries.extend(tuple(rule["queries"]) if rule else ("china",))
+    return tuple(dict.fromkeys(queries))
 
 
 def market_query(signal: Signal) -> str:
@@ -240,11 +309,129 @@ def market_relevance_score(signal: Signal, result: PolymarketSearchResult) -> fl
         score += 1.5
     if signal.theme == "btc_asia_momentum" and ("bitcoin" in text or "btc" in text):
         score += 1.0
+    for intent in signal_market_intents(signal):
+        terms = SIGNAL_MARKET_INTENTS[intent]
+        if _contains_any(text, terms["market"]):
+            score += 1.75
+        elif intent in {"hsi", "semiconductor"}:
+            score -= 1.3
     if result.yes_price is not None:
         score += max(0.0, 1 - abs(float(result.yes_price) - 0.5) * 2) * 0.8
     score += min(float(result.liquidity or 0), 1_000_000) / 1_000_000 * 0.25
     score += min(float(result.volume or 0), 5_000_000) / 5_000_000 * 0.15
     return round(score, 4)
+
+
+def market_match_label(signal: Signal, score: float) -> str:
+    rule = THEME_MARKET_RULES.get(signal.theme, {})
+    min_score = float(rule.get("min_score", 2.0))
+    strong_score = float(rule.get("strong_score", min_score + 2.0))
+    if score >= strong_score:
+        return "Strong match"
+    if score >= min_score:
+        return "Best available proxy"
+    return "Weak candidate"
+
+
+def market_candidate_reason(signal: Signal, result: PolymarketSearchResult, score: float, selected: bool) -> str:
+    text = _search_result_text(result)
+    rule = THEME_MARKET_RULES.get(signal.theme, {})
+    matched_terms = [
+        term
+        for term in tuple(rule.get("anchors", ())) + tuple(rule.get("preferred", ()))
+        if term in text
+    ]
+    intent_matches = []
+    for intent in signal_market_intents(signal):
+        terms = SIGNAL_MARKET_INTENTS[intent]
+        if _contains_any(text, terms["market"]):
+            intent_matches.append(intent)
+    if matched_terms:
+        basis = f"matched {', '.join(dict.fromkeys(matched_terms[:4]))}"
+    elif intent_matches:
+        basis = f"matched signal-specific intent {', '.join(intent_matches)}"
+    else:
+        basis = "matched only broad theme terms"
+
+    label = market_match_label(signal, score)
+    if selected and label == "Best available proxy":
+        return f"Selected as the highest-scoring proxy because no stronger direct market passed the threshold; {basis}."
+    if selected:
+        return f"Selected because it has the highest relevance score; {basis}."
+    if label == "Best available proxy":
+        return f"Usable proxy candidate; {basis}."
+    return f"Lower-confidence candidate; {basis}."
+
+
+def candidate_from_search_result(
+    signal: Signal,
+    result: PolymarketSearchResult,
+    selected_slug: str | None = None,
+) -> MarketCandidate | None:
+    market = market_from_search_result(signal, result)
+    if not market:
+        return None
+    score = market_relevance_score(signal, result)
+    label = market_match_label(signal, score)
+    selected = market.slug == selected_slug
+    return MarketCandidate(
+        market=market,
+        relevance_score=score,
+        match_label=label,
+        reason=market_candidate_reason(signal, result, score, selected),
+        selected=selected,
+    )
+
+
+def rank_market_candidates(
+    signal: Signal,
+    results: list[PolymarketSearchResult],
+    limit: int = 3,
+) -> list[MarketCandidate]:
+    candidate_min_score = float(THEME_MARKET_RULES.get(signal.theme, {}).get("candidate_min_score", 1.5))
+    by_slug: dict[str, MarketCandidate] = {}
+    for result in results:
+        candidate = candidate_from_search_result(signal, result)
+        if not candidate or candidate.relevance_score < candidate_min_score:
+            continue
+        existing = by_slug.get(candidate.market.slug)
+        if existing is None or candidate.relevance_score > existing.relevance_score:
+            by_slug[candidate.market.slug] = candidate
+    candidates = sorted(
+        by_slug.values(),
+        key=lambda item: (item.relevance_score, item.market.liquidity_usdc, item.market.volume_usdc),
+        reverse=True,
+    )
+    selected_slug = candidates[0].market.slug if candidates else None
+    selected: list[MarketCandidate] = []
+    for candidate in candidates[:limit]:
+        is_selected = candidate.market.slug == selected_slug
+        selected.append(
+            candidate.model_copy(
+                update={
+                    "selected": is_selected,
+                    "reason": market_candidate_reason(
+                        signal,
+                        PolymarketSearchResult(
+                            id=candidate.market.id.removeprefix("polymarket-"),
+                            slug=candidate.market.slug,
+                            question=candidate.market.question,
+                            title=candidate.market.question,
+                            category=candidate.market.category,
+                            liquidity=candidate.market.liquidity_usdc,
+                            volume=candidate.market.volume_usdc,
+                            active=True,
+                            closed=False,
+                            yes_price=candidate.market.yes_price,
+                            expiry=candidate.market.expiry,
+                        ),
+                        candidate.relevance_score,
+                        is_selected,
+                    ),
+                }
+            )
+        )
+    return selected
 
 
 def best_market_search_result(signal: Signal, results: list[PolymarketSearchResult]) -> PolymarketSearchResult | None:
@@ -342,37 +529,63 @@ class OracleService:
         markets: list[Market],
         live_cache: dict[str, Market | None] | None = None,
     ) -> Market:
+        market, _ = self.resolve_market_with_candidates(signal, markets, live_cache=live_cache)
+        return market
+
+    def resolve_market_with_candidates(
+        self,
+        signal: Signal,
+        markets: list[Market],
+        live_cache: dict[str, Market | None] | None = None,
+        query_cache: dict[str, list[PolymarketSearchResult]] | None = None,
+    ) -> tuple[Market, list[MarketCandidate]]:
         try:
-            return matching_market(signal, markets)
+            market = matching_market(signal, markets)
+            return market, [
+                MarketCandidate(
+                    market=market,
+                    relevance_score=10.0,
+                    match_label="Configured match",
+                    reason="Selected from an explicitly configured market for this signal theme.",
+                    selected=True,
+                )
+            ]
         except LookupError:
             pass
 
-        cache_key = f"{signal.theme}:{signal.asset_link}"
+        intent_key = ",".join(signal_market_intents(signal)) or "broad"
+        cache_key = f"{signal.theme}:{signal.asset_link}:{intent_key}"
         if live_cache is not None and cache_key in live_cache:
             market = live_cache[cache_key]
             if market:
-                return market
+                candidate = MarketCandidate(
+                    market=market,
+                    relevance_score=0.0,
+                    match_label="Cached match",
+                    reason="Selected from the live market cache for this signal intent.",
+                    selected=True,
+                )
+                return market, [candidate]
             raise LookupError(f"No live Polymarket market with a real price found for {signal.theme}")
 
+        results: list[PolymarketSearchResult] = []
         for query in market_queries(signal):
-            query_cache_key = f"query:{query}"
-            if live_cache is not None and query_cache_key in live_cache:
-                market = live_cache[query_cache_key]
-                if market:
-                    live_cache[cache_key] = market
-                    return market
+            if query_cache is not None and query in query_cache:
+                results.extend(query_cache[query])
                 continue
-            result = best_market_search_result(signal, self.polymarket_client.search(query, limit=20))
-            if not result:
-                if live_cache is not None:
-                    live_cache[query_cache_key] = None
-                continue
-            market = market_from_search_result(signal, result)
-            if market:
-                if live_cache is not None:
-                    live_cache[cache_key] = market
-                    live_cache[query_cache_key] = market
-                return market
+            query_results = self.polymarket_client.search(query, limit=20)
+            if query_cache is not None:
+                query_cache[query] = query_results
+            results.extend(query_results)
+
+        candidates = rank_market_candidates(signal, results, limit=3)
+        min_score = float(THEME_MARKET_RULES.get(signal.theme, {}).get("min_score", 2.0))
+        selected = candidates[0] if candidates and candidates[0].relevance_score >= min_score else None
+        if selected:
+            if live_cache is not None:
+                live_cache[cache_key] = selected.market
+            return selected.market, candidates
+
         if live_cache is not None:
             live_cache[cache_key] = None
         raise LookupError(f"No relevant live Polymarket market with a real price found for {signal.theme}")
@@ -385,11 +598,15 @@ class OracleService:
                 raise LookupError(f"Unknown signal id: {signal_id}")
 
         markets = self.repository.markets()
-        live_cache: dict[str, Market | None] = {}
+        query_cache: dict[str, list[PolymarketSearchResult]] = {}
         recommendations: list[Recommendation] = []
         for signal in signals:
             try:
-                market = self.resolve_market(signal, markets, live_cache)
+                market, market_candidates = self.resolve_market_with_candidates(
+                    signal,
+                    markets,
+                    query_cache=query_cache,
+                )
             except LookupError:
                 if signal_id:
                     raise
@@ -404,6 +621,7 @@ class OracleService:
                 Recommendation(
                     signal=signal,
                     market=market,
+                    market_candidates=market_candidates,
                     decision=decision,
                     decision_trace=decision_trace(signal, market, decision, self.config),
                     llm_reasoning=llm_reasoning,

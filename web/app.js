@@ -33,6 +33,8 @@ const formatSignedPct = (value) => {
 };
 const formatUsdc = (value) =>
   `${Math.round(value || 0).toLocaleString("en-US")} testnet risk units`;
+const formatScore = (value) =>
+  Number(value || 0).toFixed(1);
 const shortHash = (value) =>
   value ? `${value.slice(0, 10)}...${value.slice(-8)}` : "not submitted";
 const proofCacheKey = (signalId) => signalId;
@@ -162,6 +164,7 @@ function renderAnalysis() {
     `${market.slug} · ${Math.round(market.liquidity_usdc).toLocaleString(
       "en-US",
     )} USDC liquidity · expires ${market.expiry.slice(0, 10)}`;
+  renderMarketCandidates(recommendation.market_candidates || [], market.slug);
 
   const directionPill = document.querySelector("#directionPill");
   directionPill.textContent = decision.direction;
@@ -202,6 +205,48 @@ function renderAnalysis() {
     .join("");
 
   renderReceipt(receipt, signal.id);
+}
+
+function renderMarketCandidates(candidates, selectedSlug) {
+  const container = document.querySelector("#candidateMarkets");
+  if (!container) return;
+  if (!candidates.length) {
+    container.innerHTML = `
+      <div class="candidate-header">
+        <span>Market Match Audit</span>
+        <strong>No sufficiently relevant market</strong>
+      </div>
+      <p class="candidate-empty">No priced Polymarket candidate passed the relevance filter for this signal.</p>
+    `;
+    return;
+  }
+  container.innerHTML = `
+    <div class="candidate-header">
+      <span>Market Match Audit</span>
+      <strong>Top ${Math.min(candidates.length, 3)} candidates</strong>
+    </div>
+    <div class="candidate-list">
+      ${candidates
+        .map((candidate) => {
+          const market = candidate.market || {};
+          const selected = candidate.selected || market.slug === selectedSlug;
+          const proxy = candidate.match_label === "Best available proxy";
+          const className = `candidate-item ${selected ? "selected" : ""} ${proxy ? "proxy" : ""}`;
+          return `
+            <div class="${className}">
+              <div class="candidate-topline">
+                <span>${selected ? "Selected" : "Candidate"}</span>
+                <strong>${formatScore(candidate.relevance_score)}</strong>
+              </div>
+              <h4>${escapeHtml(market.question || market.slug || "Unknown market")}</h4>
+              <p>${escapeHtml(candidate.reason || candidate.match_label)}</p>
+              <small>${escapeHtml(candidate.match_label)} · ${escapeHtml(market.slug || "")}</small>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
 }
 
 function renderDecisionTrace(trace) {

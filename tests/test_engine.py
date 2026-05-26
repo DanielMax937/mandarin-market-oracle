@@ -14,6 +14,7 @@ from oracle.engine import (
     decision_trace,
     matching_market,
     market_relevance_score,
+    rank_market_candidates,
 )
 from oracle.intake import SignalIntakeService, infer_theme
 from oracle.models import Market, Signal, SignalIntakeRequest
@@ -166,6 +167,81 @@ class EngineTests(unittest.TestCase):
         )
         market = service.resolve_market(signal, [], {})
         self.assertIn("gdp-growth", market.slug)
+
+    def test_live_market_candidates_explain_selected_contract(self) -> None:
+        signal = sample_signal()
+
+        candidates = rank_market_candidates(
+            signal,
+            [
+                search_result(
+                    "will-china-invades-taiwan-before-gta-vi-716-644",
+                    "Will China invades Taiwan before GTA VI?",
+                    liquidity=50_000,
+                ),
+                search_result(
+                    "will-china-gdp-growth-in-q2-2026-be-between-4pt6-and-4pt9",
+                    "Will China GDP growth in Q2 2026 be between 4.6% and 4.9%?",
+                    liquidity=4_000,
+                ),
+            ],
+        )
+
+        self.assertEqual(candidates[0].match_label, "Strong match")
+        self.assertTrue(candidates[0].selected)
+        self.assertIn("highest relevance score", candidates[0].reason)
+        self.assertIn("gdp-growth", candidates[0].market.slug)
+
+    def test_hang_seng_signal_prefers_hsi_contract_over_gdp_proxy(self) -> None:
+        signal = sample_signal().model_copy(
+            update={
+                "theme": "risk_off_china",
+                "headline_zh": "恒指期货跳水，港股波动放大",
+                "headline_en": "Hang Seng futures sold off as Hong Kong equities volatility increased.",
+                "asset_link": "china_fx_equities_rates",
+            }
+        )
+
+        candidates = rank_market_candidates(
+            signal,
+            [
+                search_result(
+                    "hsi-up-or-down-on-may-26-2026",
+                    "Hang Seng (HSI) Up or Down on May 26?",
+                    liquidity=9,
+                ),
+                search_result(
+                    "will-china-gdp-growth-in-q2-2026-be-between-4pt6-and-4pt9",
+                    "Will China GDP growth in Q2 2026 be between 4.6% and 4.9%?",
+                    liquidity=4_000,
+                ),
+            ],
+        )
+
+        self.assertIn("hsi-up-or-down", candidates[0].market.slug)
+        self.assertEqual(candidates[0].match_label, "Strong match")
+
+    def test_semiconductor_signal_marks_macro_market_as_proxy(self) -> None:
+        signal = sample_signal().model_copy(
+            update={
+                "headline_zh": "华为芯片周期升温，半导体板块走强",
+                "headline_en": "Huawei chip cycle heats up as semiconductor shares rally.",
+            }
+        )
+
+        candidates = rank_market_candidates(
+            signal,
+            [
+                search_result(
+                    "will-china-gdp-growth-in-q2-2026-be-between-4pt6-and-4pt9",
+                    "Will China GDP growth in Q2 2026 be between 4.6% and 4.9%?",
+                    liquidity=4_000,
+                )
+            ],
+        )
+
+        self.assertEqual(candidates[0].match_label, "Best available proxy")
+        self.assertIn("highest-scoring proxy", candidates[0].reason)
 
     def test_relevance_penalizes_unrelated_china_keyword_match(self) -> None:
         signal = sample_signal()
