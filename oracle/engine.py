@@ -162,13 +162,103 @@ def matching_market(signal: Signal, markets: list[Market]) -> Market:
     raise LookupError(f"No market found for theme {signal.theme}")
 
 
+THEME_MARKET_RULES: dict[str, dict[str, Any]] = {
+    "china_stimulus": {
+        "queries": ("china gdp", "china economic growth", "china economy"),
+        "anchors": ("china", "chinese"),
+        "preferred": ("gdp", "growth", "economic growth", "economy", "tariff", "trade", "yuan", "renminbi"),
+        "excluded": ("taiwan", "invade", "invasion", "blockade", "gta", "bitcoin", "btc", "crypto"),
+        "min_score": 3.0,
+    },
+    "risk_off_china": {
+        "queries": ("china gdp", "china economy", "china yuan"),
+        "anchors": ("china", "chinese", "yuan", "renminbi"),
+        "preferred": ("gdp", "growth", "economic growth", "economy", "yuan", "renminbi", "stocks"),
+        "excluded": ("taiwan", "invade", "invasion", "blockade", "gta", "bitcoin", "btc", "crypto"),
+        "min_score": 3.0,
+    },
+    "geopolitical_risk": {
+        "queries": ("china invade taiwan", "china taiwan", "taiwan blockade"),
+        "anchors": ("taiwan", "china"),
+        "preferred": ("taiwan", "invade", "invasion", "blockade", "military", "war"),
+        "excluded": ("gdp", "growth", "bitcoin", "btc", "crypto", "gta"),
+        "min_score": 3.0,
+    },
+    "btc_asia_momentum": {
+        "queries": ("bitcoin", "btc", "crypto"),
+        "anchors": ("bitcoin", "btc", "crypto"),
+        "preferred": ("bitcoin", "btc", "crypto", "ethereum", "solana"),
+        "excluded": ("taiwan", "gdp", "growth", "stock"),
+        "min_score": 2.5,
+    },
+}
+
+
+def market_queries(signal: Signal) -> tuple[str, ...]:
+    rule = THEME_MARKET_RULES.get(signal.theme)
+    if rule:
+        return tuple(rule["queries"])
+    return ("china",)
+
+
 def market_query(signal: Signal) -> str:
-    return {
-        "china_stimulus": "china economy",
-        "risk_off_china": "china stocks",
-        "geopolitical_risk": "china taiwan",
-        "btc_asia_momentum": "bitcoin",
-    }.get(signal.theme, "china")
+    return market_queries(signal)[0]
+
+
+def _search_result_text(result: PolymarketSearchResult) -> str:
+    return " ".join(
+        value
+        for value in (
+            result.question,
+            result.title,
+            result.slug,
+            result.category,
+        )
+        if value
+    ).lower()
+
+
+def market_relevance_score(signal: Signal, result: PolymarketSearchResult) -> float:
+    text = _search_result_text(result)
+    rule = THEME_MARKET_RULES.get(signal.theme, {})
+    anchors = tuple(rule.get("anchors", ()))
+    preferred = tuple(rule.get("preferred", ()))
+    excluded = tuple(rule.get("excluded", ()))
+
+    score = 0.0
+    if anchors:
+        score += 2.0 if any(term in text for term in anchors) else -2.0
+    for term in preferred:
+        if term in text:
+            score += 1.25 if " " in term else 1.0
+    for term in excluded:
+        if term in text:
+            score -= 2.5
+    if signal.theme in {"china_stimulus", "risk_off_china"} and "china" in text and "gdp" in text:
+        score += 1.5
+    if signal.theme == "geopolitical_risk" and "china" in text and "taiwan" in text:
+        score += 1.5
+    if signal.theme == "btc_asia_momentum" and ("bitcoin" in text or "btc" in text):
+        score += 1.0
+    if result.yes_price is not None:
+        score += max(0.0, 1 - abs(float(result.yes_price) - 0.5) * 2) * 0.8
+    score += min(float(result.liquidity or 0), 1_000_000) / 1_000_000 * 0.25
+    score += min(float(result.volume or 0), 5_000_000) / 5_000_000 * 0.15
+    return round(score, 4)
+
+
+def best_market_search_result(signal: Signal, results: list[PolymarketSearchResult]) -> PolymarketSearchResult | None:
+    min_score = float(THEME_MARKET_RULES.get(signal.theme, {}).get("min_score", 2.0))
+    candidates = [
+        (market_relevance_score(signal, result), float(result.liquidity or 0), float(result.volume or 0), result)
+        for result in results
+        if result.slug and (result.question or result.title) and result.yes_price is not None
+    ]
+    candidates = [candidate for candidate in candidates if candidate[0] >= min_score]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    return candidates[0][3]
 
 
 def market_from_search_result(signal: Signal, result: PolymarketSearchResult) -> Market | None:
@@ -257,22 +347,35 @@ class OracleService:
         except LookupError:
             pass
 
-        query = market_query(signal)
-        if live_cache is not None and query in live_cache:
-            market = live_cache[query]
+        cache_key = f"{signal.theme}:{signal.asset_link}"
+        if live_cache is not None and cache_key in live_cache:
+            market = live_cache[cache_key]
             if market:
                 return market
             raise LookupError(f"No live Polymarket market with a real price found for {signal.theme}")
 
-        for result in self.polymarket_client.search(query, limit=10):
+        for query in market_queries(signal):
+            query_cache_key = f"query:{query}"
+            if live_cache is not None and query_cache_key in live_cache:
+                market = live_cache[query_cache_key]
+                if market:
+                    live_cache[cache_key] = market
+                    return market
+                continue
+            result = best_market_search_result(signal, self.polymarket_client.search(query, limit=20))
+            if not result:
+                if live_cache is not None:
+                    live_cache[query_cache_key] = None
+                continue
             market = market_from_search_result(signal, result)
             if market:
                 if live_cache is not None:
-                    live_cache[query] = market
+                    live_cache[cache_key] = market
+                    live_cache[query_cache_key] = market
                 return market
         if live_cache is not None:
-            live_cache[query] = None
-        raise LookupError(f"No live Polymarket market with a real price found for {signal.theme}")
+            live_cache[cache_key] = None
+        raise LookupError(f"No relevant live Polymarket market with a real price found for {signal.theme}")
 
     def recommendations(self, signal_id: str | None = None, include_llm: bool = False) -> list[Recommendation]:
         signals = self.repository.signals()

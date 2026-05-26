@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -33,6 +34,8 @@ service = OracleService()
 intake_service = SignalIntakeService()
 polymarket_client = PolymarketClient()
 proof_writer = ProofWriter()
+SNAPSHOT_CACHE_SECONDS = 45
+_snapshot_cache: tuple[float, dict] | None = None
 
 
 def _registry_contract() -> str | None:
@@ -42,6 +45,20 @@ def _registry_contract() -> str | None:
 def _reject_non_live_mode(mode: str | None) -> None:
     if mode not in {None, "live"}:
         raise HTTPException(status_code=400, detail="Only live mode is supported; replay data is disabled.")
+
+
+def _clear_snapshot_cache() -> None:
+    global _snapshot_cache
+    _snapshot_cache = None
+
+
+def _snapshot_payload() -> dict:
+    snapshot_model = service.snapshot()
+    payload = snapshot_model.model_dump(mode="json")
+    payload["dataset_mode"] = "live"
+    payload["verification_contract"] = _registry_contract()
+    payload["validation"] = validation_summary(snapshot_model.recommendations)
+    return payload
 
 
 @app.get("/api/health")
@@ -64,13 +81,14 @@ def health() -> dict[str, str | None]:
 
 @app.get("/api/snapshot")
 def snapshot(mode: str | None = None) -> dict:
+    global _snapshot_cache
     _reject_non_live_mode(mode)
     try:
-        snapshot_model = service.snapshot()
-        payload = snapshot_model.model_dump(mode="json")
-        payload["dataset_mode"] = "live"
-        payload["verification_contract"] = _registry_contract()
-        payload["validation"] = validation_summary(snapshot_model.recommendations)
+        now = time.monotonic()
+        if _snapshot_cache and now - _snapshot_cache[0] < SNAPSHOT_CACHE_SECONDS:
+            return _snapshot_cache[1]
+        payload = _snapshot_payload()
+        _snapshot_cache = (now, payload)
         return payload
     except Exception as exc:  # pragma: no cover - FastAPI boundary
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -127,6 +145,7 @@ def write_proof(signal_id: str, mode: str | None = None) -> dict:
         if result.status == "submitted" and result.tx_hash:
             item.receipt = item.receipt.model_copy(update={"tx_hash": result.tx_hash})
             service.repository.append_receipt(item.receipt)
+            _clear_snapshot_cache()
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -141,6 +160,7 @@ def write_proof(signal_id: str, mode: str | None = None) -> dict:
 def submit_signal(request: SignalIntakeRequest) -> dict:
     try:
         response = intake_service.submit(request)
+        _clear_snapshot_cache()
     except Exception as exc:  # pragma: no cover - FastAPI boundary
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return response.model_dump(mode="json")

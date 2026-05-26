@@ -253,9 +253,43 @@ h3 {
 
 .workbench {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr) 330px;
+  grid-template-columns: minmax(0, 1fr) 330px;
   gap: 12px;
   align-items: start;
+}
+
+.workspace-scroll {
+  display: grid;
+  grid-template-columns: 340px minmax(720px, 1fr);
+  gap: 12px;
+  min-width: 0;
+  max-height: calc(100vh - 250px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 10px;
+  scrollbar-gutter: stable;
+}
+
+.workspace-scroll::-webkit-scrollbar,
+.market-results::-webkit-scrollbar,
+.proof-payload pre::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.workspace-scroll::-webkit-scrollbar-track,
+.market-results::-webkit-scrollbar-track,
+.proof-payload pre::-webkit-scrollbar-track {
+  background: #0d141b;
+  border-radius: 999px;
+}
+
+.workspace-scroll::-webkit-scrollbar-thumb,
+.market-results::-webkit-scrollbar-thumb,
+.proof-payload pre::-webkit-scrollbar-thumb {
+  border: 2px solid #0d141b;
+  border-radius: 999px;
+  background: rgba(45, 212, 191, 0.45);
 }
 
 .signal-panel,
@@ -265,9 +299,14 @@ h3 {
   overflow: hidden;
 }
 
+.signal-panel {
+  min-width: 340px;
+}
+
 .analysis-panel {
   display: grid;
   gap: 12px;
+  min-width: 720px;
 }
 
 .panel-title {
@@ -858,9 +897,21 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .workspace-scroll {
+    grid-template-columns: 1fr;
+    max-height: none;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
   .signal-panel,
   .receipt-panel {
     position: static;
+    min-width: 0;
+  }
+
+  .analysis-panel {
+    min-width: 0;
   }
 
   .signal-list {

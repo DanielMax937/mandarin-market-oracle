@@ -7,10 +7,17 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from oracle.config import Settings
-from oracle.engine import OracleService, canonical_hash, decide, decision_trace, matching_market
+from oracle.engine import (
+    OracleService,
+    canonical_hash,
+    decide,
+    decision_trace,
+    matching_market,
+    market_relevance_score,
+)
 from oracle.intake import SignalIntakeService, infer_theme
 from oracle.models import Market, Signal, SignalIntakeRequest
-from oracle.polymarket import PolymarketClient
+from oracle.polymarket import PolymarketClient, PolymarketSearchResult
 from oracle.proof import ProofWriter, proof_details
 from oracle.repository import DataRepository
 from oracle.validation import validation_summary
@@ -45,6 +52,21 @@ def sample_market() -> Market:
         no_price=0.62,
         liquidity_usdc=250000,
         volume_usdc=700000,
+        expiry=datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc),
+    )
+
+
+def search_result(slug: str, question: str, liquidity: float = 1000) -> PolymarketSearchResult:
+    return PolymarketSearchResult(
+        id=slug,
+        slug=slug,
+        question=question,
+        title=question,
+        liquidity=liquidity,
+        volume=liquidity * 2,
+        active=True,
+        closed=False,
+        yes_price=0.42,
         expiry=datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc),
     )
 
@@ -118,6 +140,46 @@ class EngineTests(unittest.TestCase):
         config = Settings(polymarket_proxy_url="http://127.0.0.1:7890")
         client = PolymarketClient(config)
         self.assertEqual(client._proxy_url(), "http://127.0.0.1:7890")
+
+    def test_live_market_selection_prefers_relevant_contract(self) -> None:
+        signal = sample_signal()
+
+        class FakePolymarketClient:
+            def search(self, query: str, limit: int = 10) -> list[PolymarketSearchResult]:
+                return [
+                    search_result(
+                        "will-china-invades-taiwan-before-gta-vi-716-644",
+                        "Will China invades Taiwan before GTA VI?",
+                        liquidity=50_000,
+                    ),
+                    search_result(
+                        "will-china-gdp-growth-in-q2-2026-be-between-4pt6-and-4pt9",
+                        "Will China GDP growth in Q2 2026 be between 4.6% and 4.9%?",
+                        liquidity=4_000,
+                    ),
+                ]
+
+        service = OracleService(
+            repository=self.repository,
+            config=self.config,
+            polymarket_client=FakePolymarketClient(),
+        )
+        market = service.resolve_market(signal, [], {})
+        self.assertIn("gdp-growth", market.slug)
+
+    def test_relevance_penalizes_unrelated_china_keyword_match(self) -> None:
+        signal = sample_signal()
+        unrelated = search_result(
+            "will-china-invades-taiwan-before-gta-vi-716-644",
+            "Will China invades Taiwan before GTA VI?",
+            liquidity=50_000,
+        )
+        relevant = search_result(
+            "will-china-gdp-growth-in-q2-2026-be-between-4pt6-and-4pt9",
+            "Will China GDP growth in Q2 2026 be between 4.6% and 4.9%?",
+            liquidity=4_000,
+        )
+        self.assertGreater(market_relevance_score(signal, relevant), market_relevance_score(signal, unrelated))
 
     def test_arc_testnet_requires_configuration(self) -> None:
         item = self.service.recommendations(signal_id="live-test-signal")[0]
